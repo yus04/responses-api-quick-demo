@@ -52,7 +52,7 @@ def create_client() -> OpenAI:
     return OpenAI(
         base_url=base_url,
         api_key=token_provider,
-        api_version=api_version
+        default_headers={"api-version": api_version},
     )
 
 
