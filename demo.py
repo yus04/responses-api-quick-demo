@@ -48,10 +48,11 @@ def create_client() -> OpenAI:
 
     # Responses API は /openai/v1/ ベースURLが必要
     base_url = endpoint.rstrip("/") + "/openai/v1/"
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-03-26")
     return OpenAI(
         base_url=base_url,
-        api_key="unused",  # OpenAI クライアントの必須パラメータ。実際には使われません
-        default_headers={"Authorization": f"Bearer {token_provider()}"},
+        api_key=token_provider,
+        api_version=api_version
     )
 
 
