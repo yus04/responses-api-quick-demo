@@ -7,33 +7,51 @@ Azure OpenAI Responses API Quick Demo - Tool Selection
 
 必要な環境変数:
   AZURE_OPENAI_ENDPOINT   - Azure OpenAI のエンドポイント URL
-  AZURE_OPENAI_API_KEY    - Azure OpenAI の API キー
   AZURE_OPENAI_DEPLOYMENT - デプロイ名 (省略時: gpt-4o)
+
+認証:
+  API Key 認証は使用しません。
+  DefaultAzureCredential (Entra ID) で認証します。
+  以下のいずれかが利用可能であれば自動的に使用されます:
+    - az login (Azure CLI)
+    - マネージド ID
+    - 環境変数 (AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID)
 """
 
 import json
 import os
 import sys
 
-from openai import AzureOpenAI
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
+from dotenv import load_dotenv
+from openai import OpenAI
 
 # ---------------------------------------------------------------------------
 # クライアント初期化
 # ---------------------------------------------------------------------------
 
-def create_client() -> AzureOpenAI:
+def create_client() -> OpenAI:
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
-    api_key = os.environ.get("AZURE_OPENAI_API_KEY")
-    if not endpoint or not api_key:
+    if not endpoint:
         print(
-            "エラー: 環境変数 AZURE_OPENAI_ENDPOINT と AZURE_OPENAI_API_KEY を設定してください。",
+            "エラー: 環境変数 AZURE_OPENAI_ENDPOINT を設定してください。",
             file=sys.stderr,
         )
         sys.exit(1)
-    return AzureOpenAI(
-        azure_endpoint=endpoint,
-        api_key=api_key,
-        api_version="2025-03-01-preview",
+
+    # Entra ID (DefaultAzureCredential) でトークンを取得
+    # 事前に `az login` を実行しておくか、マネージド ID / サービスプリンシパルを設定してください
+    credential = DefaultAzureCredential()
+    token_provider = get_bearer_token_provider(
+        credential, "https://cognitiveservices.azure.com/.default"
+    )
+
+    # Responses API は /openai/v1/ ベースURLが必要
+    base_url = endpoint.rstrip("/") + "/openai/v1/"
+    return OpenAI(
+        base_url=base_url,
+        api_key="unused",  # OpenAI クライアントの必須パラメータ。実際には使われません
+        default_headers={"Authorization": f"Bearer {token_provider()}"},
     )
 
 
@@ -62,6 +80,7 @@ TOOLS = [
                 },
             },
             "required": ["city"],
+            "additionalProperties": False,
         },
     },
     {
@@ -83,6 +102,7 @@ TOOLS = [
                 },
             },
             "required": ["query"],
+            "additionalProperties": False,
         },
     },
     {
@@ -108,6 +128,7 @@ TOOLS = [
                 },
             },
             "required": ["to", "subject", "body"],
+            "additionalProperties": False,
         },
     },
     {
@@ -125,6 +146,7 @@ TOOLS = [
                 },
             },
             "required": ["expression"],
+            "additionalProperties": False,
         },
     },
     {
@@ -150,6 +172,7 @@ TOOLS = [
                 },
             },
             "required": ["text", "target_language"],
+            "additionalProperties": False,
         },
     },
 ]
@@ -170,7 +193,7 @@ SAMPLES = [
 # メイン処理
 # ---------------------------------------------------------------------------
 
-def run_demo(client: AzureOpenAI, deployment: str) -> None:
+def run_demo(client: OpenAI, deployment: str) -> None:
     print("=" * 60)
     print("Azure OpenAI Responses API - Tool Selection Demo")
     print("=" * 60)
@@ -179,6 +202,9 @@ def run_demo(client: AzureOpenAI, deployment: str) -> None:
     for i, sample in enumerate(SAMPLES, start=1):
         print(f"[サンプル {i}]")
         print(f"入力: {sample}")
+
+        print(deployment)
+        print(sample)
 
         response = client.responses.create(
             model=deployment,
@@ -210,6 +236,7 @@ def run_demo(client: AzureOpenAI, deployment: str) -> None:
 
 
 if __name__ == "__main__":
+    load_dotenv()
     client = create_client()
     deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
     run_demo(client, deployment)

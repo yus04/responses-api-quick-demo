@@ -20,50 +20,93 @@ Azure OpenAI の **Responses API** を使い、5 つのツールの中からモ�
 
 ## 前提条件
 
-- Python 3.9 以上
+- [uv](https://docs.astral.sh/uv/) 0.4 以上
+- [Azure CLI](https://learn.microsoft.com/ja-jp/cli/azure/install-azure-cli) (`az`) インストール済み
 - Azure OpenAI リソース（Responses API 対応のデプロイ）
+- Azure OpenAI リソースに対して **`Cognitive Services OpenAI User`** 以上のロールが付与されたアカウント
+
+> **API Key 認証は使用しません。** 管理者ポリシーにより API Key が無効化されているため、Entra ID (DefaultAzureCredential) で認証します。
+
+> Python インタープリターは uv が自動的に管理するため、別途インストール不要です。
 
 ---
 
 ## セットアップ
 
-### 1. 依存ライブラリのインストール
+### 1. Azure CLI でログイン
 
 ```bash
-pip install -r requirements.txt
+az login
 ```
 
-### 2. 環境変数の設定
+ブラウザが開き、Entra ID (Azure AD) への認証を求められます。
+ブラウザが使えない環境（SSH 等）では以下のデバイスコードフローを使用してください。
+
+```bash
+az login --use-device-code
+```
+
+ログイン後、対象サブスクリプションをアクティブにします。
+
+```bash
+# サブスクリプション一覧を確認
+az account list --output table
+
+# 使用するサブスクリプションを設定
+az account set --subscription "<サブスクリプション名または ID>"
+```
+
+### 2. Azure OpenAI リソースへのロール付与（初回のみ・管理者が実施）
+
+デモを実行するユーザーに以下のロールを付与してもらう必要があります。
+
+```bash
+# 例: ユーザー saitoyu@example.com に Cognitive Services OpenAI User を付与
+az role assignment create \
+  --role "Cognitive Services OpenAI User" \
+  --assignee "saitoyu@example.com" \
+  --scope "/subscriptions/<サブスクリプション ID>/resourceGroups/<リソースグループ>/providers/Microsoft.CognitiveServices/accounts/<リソース名>"
+```
+
+> ロールの反映には数分かかる場合があります。
+
+### 3. 依存関係をインストール
+
+```bash
+uv sync
+```
+
+`uv sync` は `.venv` 仮想環境の作成・依存パッケージのインストールを一括で行います。
+`azure-identity` パッケージも自動的にインストールされます。
+
+### 4. 環境変数の設定
+
+`.env.example` をコピーして `.env` を作成し、値を入力してください。
+
+```bash
+cp .env.example .env
+```
 
 | 環境変数 | 必須 | 説明 |
 |----------|------|------|
-| `AZURE_OPENAI_ENDPOINT` | ✅ | Azure OpenAI のエンドポイント URL（例: `https://<your-resource>.openai.azure.com/`） |
-| `AZURE_OPENAI_API_KEY` | ✅ | Azure OpenAI の API キー |
+| `AZURE_OPENAI_ENDPOINT` | ✅ | Azure OpenAI のエンドポイント URL |
 | `AZURE_OPENAI_DEPLOYMENT` | ― | デプロイ名（省略時: `gpt-4o`） |
 
-**Linux / macOS:**
+> `AZURE_OPENAI_API_KEY` は**不要**です。Entra ID トークンで認証するため設定しないでください。
 
-```bash
-export AZURE_OPENAI_ENDPOINT="https://<your-resource>.openai.azure.com/"
-export AZURE_OPENAI_API_KEY="<your-api-key>"
-export AZURE_OPENAI_DEPLOYMENT="gpt-4o"
-```
-
-**Windows (PowerShell):**
-
-```powershell
-$env:AZURE_OPENAI_ENDPOINT = "https://<your-resource>.openai.azure.com/"
-$env:AZURE_OPENAI_API_KEY  = "<your-api-key>"
-$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o"
-```
+`.env` ファイルが存在する場合、スクリプト起動時に自動で読み込まれます。
+シェルで既に環境変数が設定されている場合はそちらが優先されます。
 
 ---
 
 ## 実行方法
 
 ```bash
-python demo.py
+uv run demo.py
 ```
+
+`uv run` は `.venv` 内の Python を使って自動的にスクリプトを実行します。
+仮想環境の有効化（`source .venv/bin/activate`）は不要です。
 
 ---
 
@@ -171,6 +214,42 @@ Azure OpenAI の料金プランを検索してください。
 ```
 responses-api-quick-demo/
 ├── demo.py           # メインスクリプト
-├── requirements.txt  # Python 依存ライブラリ
+├── pyproject.toml    # プロジェクト設定・依存ライブラリ定義 (uv)
+├── uv.lock           # ロックファイル（再現性のある依存解決）
+├── .env.example      # 環境変数のテンプレート（API Key なし）
 └── README.md         # このファイル
+```
+
+---
+
+## 認証の仕組み
+
+このデモは `azure-identity` の `DefaultAzureCredential` を使用します。
+以下の順番で認証情報を自動的に探索します。
+
+| 優先順位 | 認証方法 | 使用場面 |
+|---------|----------|----------|
+| 1 | 環境変数 (`AZURE_CLIENT_ID` 等) | CI/CD・サービスプリンシパル |
+| 2 | Managed Identity | Azure 上のVMやコンテナー |
+| 3 | Azure CLI (`az login`) | ローカル開発 |
+| 4 | Azure Developer CLI (`azd auth login`) | ローカル開発 (azd) |
+
+ローカル開発では **`az login`** が最も手軽です。
+
+---
+
+## 依存ライブラリの管理
+
+```bash
+# パッケージの追加
+uv add <package>
+
+# パッケージの削除
+uv remove <package>
+
+# ロックファイルを元に環境を再現
+uv sync
+
+# 依存関係の一覧表示
+uv pip list
 ```
