@@ -204,9 +204,6 @@ def run_demo(client: OpenAI, deployment: str) -> None:
         print(f"[サンプル {i}]")
         print(f"入力: {sample}")
 
-        print(deployment)
-        print(sample)
-
         response = client.responses.create(
             model=deployment,
             input=sample,
